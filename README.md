@@ -1,2 +1,2 @@
 # benchy
-Tool to run binariesin parallel and perform benchmarks effortlessly.
+Tool to run binaries in parallel and perform benchmarks effortlessly.
