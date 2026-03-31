@@ -1,0 +1,6 @@
+---
+BasedOnStyle: LLVM
+BreakBeforeBraces: Allman
+AllowShortBlocksOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false

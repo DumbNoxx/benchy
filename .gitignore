@@ -22,6 +22,11 @@
 *.la
 *.lo
 
+# other
+.cache/
+.ccls-cache/
+compile_commands.json
+
 # Shared objects (inc. Windows DLLs)
 *.dll
 *.so
@@ -35,6 +40,8 @@
 *.i*86
 *.x86_64
 *.hex
+build/
+.direnv/
 
 # Debug files
 *.dSYM/
@@ -53,3 +60,9 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Environment
+.env
+!.env.example
+.envrc
+!.envrc.template
