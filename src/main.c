@@ -10,7 +10,6 @@ int main(int argc, char *argv[])
   double time_duration, time_wall;
   struct timespec ts1, tw1, ts2, tw2;
   clock_gettime(CLOCK_MONOTONIC, &tw1);
-  printf("argumentos nuermo: %d\n", argc);
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts1);
 
   for (int i = 1; i < argc; i++)
