@@ -2,24 +2,42 @@
 #include <stdio.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include "utils/utils.h"
 
 
-void childSum(int a, int b, int i, char* arg)
+void childSum(int a, int b, int i, char* arg, int fd)
 {
   struct timespec h_ts1, h_ts2;
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &h_ts1);
-  printf("Child: %d: working (PID: %d, Argument: %s)\n", i, getpid(), arg);
+  int pid = getpid();
+  char *argument = arg;
+
+  if (write(fd, &pid, sizeof(int)) == -1)
+  {
+      perror("error pipe");
+      exit(1);
+  }
+  if (write(fd, &arg, sizeof(argument)) == -1) 
+  {
+      perror("error pipe");
+      exit(1);
+  }
 
   int result = suma(a * i, b * i);
-  sleep(1);
 
-  printf("Result: %d\n", result);
-
+  if (write(fd, &result, sizeof(int)) == -1)
+  {
+      perror("error pipe");
+  }
 
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &h_ts2);
   double h_duration = (h_ts2.tv_sec - h_ts1.tv_sec) * 1000.0 +
                       (h_ts2.tv_nsec - h_ts1.tv_nsec) / 1e6;
-  printf("Child: %d, CPU time used: %.2f ms\n\n", i, h_duration);
+
+  if (  write(fd, &h_duration, sizeof(double)) == -1)
+  {
+      perror("error pipe");
+  }
 }
