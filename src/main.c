@@ -7,6 +7,11 @@
 
 int main(int argc, char *argv[])
 {
+  if (argc < 2)
+  {
+    printf("At least one argument is required\n");
+    return 1;
+  }
   double time_duration, time_wall;
   struct timespec ts1, tw1, ts2, tw2;
   clock_gettime(CLOCK_MONOTONIC, &tw1);
@@ -23,6 +28,12 @@ int main(int argc, char *argv[])
       return 1;
     }
     pid_t pid = fork();
+
+    if (pid == -1)
+    {
+      perror("An erro ocurred with fork\n");
+      return 4;
+    }
 
     if (pid == 0)
     {
