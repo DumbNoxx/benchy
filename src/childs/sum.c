@@ -1,17 +1,21 @@
 #define _GNU_SOURCE
-#include "utils/utils.h"
 #include <fcntl.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/mount.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-void childSum(int a, int b, int i, char *arg, int fd, const char *cgroup_dir,
-              char *ramLimit, int numCpu)
+int openBin(char *arg, char *file, char *foundPath);
+
+void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
+              int numCpu)
 {
   int pid = getpid();
   char child_path[128];
@@ -48,6 +52,7 @@ void childSum(int a, int b, int i, char *arg, int fd, const char *cgroup_dir,
 
   char proces_path[150];
   char pidResource[10];
+  char binaryPath[512];
   snprintf(proces_path, sizeof(proces_path), "%s/cgroup.procs", child_path);
   int fdProcs = open(proces_path, O_WRONLY);
   snprintf(pidResource, sizeof(pidResource), "%d", getpid());
@@ -64,12 +69,35 @@ void childSum(int a, int b, int i, char *arg, int fd, const char *cgroup_dir,
     perror("mkdir");
     chmod(file, 0777);
   }
+  if (openBin(arg, file, binaryPath) == -1)
+  {
+    perror("openBin error in childSum");
+    exit(1);
+  }
 
-  if (unshare(CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWPID) == -1)
+  char sysPath[512], devPath[512];
+  snprintf(sysPath, sizeof(sysPath), "%s/sys", file);
+  snprintf(devPath, sizeof(devPath), "%s/dev", file);
+
+  if (mkdir(sysPath, 0555) == -1)
+  {
+    perror("mkdir syspath");
+    exit(1);
+  }
+  if (mkdir(devPath, 0555) == -1)
+  {
+    perror("mkdir devPath");
+    exit(1);
+  }
+  mount("/sys", sysPath, NULL, MS_BIND | MS_REC | MS_RDONLY, NULL);
+  mount("/dev", devPath, NULL, MS_BIND | MS_REC | MS_RDONLY, NULL);
+
+  if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
   {
     perror("unshare");
     exit(1);
   }
+
   if (chroot(file) == -1)
   {
     perror("chroot");
@@ -80,36 +108,134 @@ void childSum(int a, int b, int i, char *arg, int fd, const char *cgroup_dir,
     perror("chdir");
     exit(1);
   }
-
-  struct timespec h_ts1, h_ts2;
-  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &h_ts1);
-  char *argument = arg;
-
-  if (write(fd, &pid, sizeof(int)) == -1)
+  int silence_pipe[2];
+  if (pipe(silence_pipe) == -1)
   {
-    perror("error pipe");
-    exit(1);
-  }
-  if (write(fd, &arg, sizeof(argument)) == -1)
-  {
-    perror("error pipe");
+    perror("pipe");
     exit(1);
   }
 
-  unsigned long result = suma(a * i, b * a + i);
-
-  if (write(fd, &result, sizeof(int)) == -1)
+  pid_t n_pid = fork();
+  if (n_pid == 0)
   {
-    perror("error pipe");
+    int memfd = memfd_create("benchmark_out", MFD_CLOEXEC);
+    if (memfd != -1)
+    {
+
+      dup2(memfd, STDOUT_FILENO);
+      dup2(memfd, STDERR_FILENO);
+      close(memfd);
+    }
+    if (mkdir("/proc", 0555) == -1)
+    {
+      perror("mkdir /proc");
+      exit(1);
+    }
+
+    if (mount("proc", "/proc", "proc", 0, NULL) == -1)
+    {
+      perror("mount proc aislado");
+    }
+
+    char *const args[] = {arg, NULL};
+    if (execv(binaryPath, args) == -1)
+    {
+      perror("execv binary");
+      exit(1);
+    }
+
+    exit(0);
+  }
+  else
+  {
+    close(silence_pipe[1]);
+    close(silence_pipe[0]);
+    struct rusage usage;
+    wait4(n_pid, NULL, 0, &usage);
+    double maxRssMb = (double)usage.ru_maxrss / 1024.0;
+
+    double h_duration =
+        (usage.ru_utime.tv_sec * 1000.0 + usage.ru_utime.tv_usec / 1000.0) +
+        (usage.ru_stime.tv_sec * 1000.0 + usage.ru_stime.tv_usec / 1000.0);
+
+    if (write(fd, &h_duration, sizeof(double)) == -1)
+    {
+      perror("error pipe h_duration");
+      exit(1);
+    }
+    if (write(fd, &maxRssMb, sizeof(double)) == -1)
+    {
+      perror("error pipe maxRssMb");
+      exit(1);
+    }
+  }
+}
+
+int openBin(char *arg, char *file, char *foundPath)
+{
+  char path[512];
+  char command[20];
+  snprintf(command, sizeof(command), "command -v %s", arg);
+
+  FILE *fp = popen(command, "r");
+  if (fp == NULL)
+  {
+    perror("popen openBin");
+    return -1;
   }
 
-  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &h_ts2);
-  double h_duration = (h_ts2.tv_sec - h_ts1.tv_sec) * 1000.0 +
-                      (h_ts2.tv_nsec - h_ts1.tv_nsec) / 1e6;
-
-  if (write(fd, &h_duration, sizeof(double)) == -1)
+  if (fgets(path, sizeof(path), fp) == NULL)
   {
-    perror("error pipe");
-    exit(1);
+    fprintf(stderr, "Error: Binary '%s' not found in PATH\n", arg);
+    pclose(fp);
+    return -1;
   }
+
+  path[strcspn(path, "\n")] = 0;
+  strcpy(foundPath, path);
+
+  char libs[8192];
+  char commandLib[64];
+  snprintf(commandLib, sizeof(commandLib), "ldd $(%s) 2>&1", command);
+
+  FILE *fpLib = popen(commandLib, "r");
+  if (fpLib == NULL)
+  {
+    perror("open fpLib openBin");
+    return -1;
+  }
+
+  libs[0] = '\0';
+  char buffer[256];
+
+  while (fgets(buffer, sizeof(buffer), fpLib) != NULL)
+  {
+    strncat(libs, buffer, sizeof(libs) - strlen(libs) - 1);
+  }
+
+  pclose(fpLib);
+  pclose(fp);
+
+  printf("path to bin: '%s' is: [%s]\n", arg, path);
+  if (strstr(libs, "not a dynamic executable") == NULL)
+  {
+    printf("path to libs of bin '%s' is: [%s]\n", arg, libs);
+  }
+  else if (strlen(libs) == 0)
+  {
+    printf("Error get information libs");
+  }
+
+  char copyCmd[1024];
+  snprintf(copyCmd, sizeof(copyCmd), "cp --parents %s %s/", path, file);
+
+  FILE *fpCopy = popen(copyCmd, "r");
+  int status = pclose(fpCopy);
+
+  if (status != 0)
+  {
+    perror("error copy to container");
+    return -1;
+  }
+  return 0;
 }

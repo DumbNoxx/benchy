@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -18,7 +19,7 @@ int main(int argc, char *argv[])
   const char *cgroup_dir = "/sys/fs/cgroup/benchy";
   int ramUsage30Percent = prepareTmp(cgroup_dir);
   int pid_rm[argc - 1];
-  double time_wall;
+  double time_wall, resultBenchkCpu, resultBenchkRam;
   struct timespec ts1, tw1, ts2, tw2;
   clock_gettime(CLOCK_MONOTONIC, &tw1);
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts1);
@@ -49,14 +50,26 @@ int main(int argc, char *argv[])
     if (pid == 0)
     {
       close(pipes[i][0]);
-      childSum(i * i + 1, i * i + 2, i, argv[i + 1], pipes[i][1], cgroup_dir,
-               ramLimitStr, cpuLimit);
+      childSum(argv[i + 1], pipes[i][1], cgroup_dir, ramLimitStr, cpuLimit);
       close(pipes[i][1]);
       return 0;
     }
-    if (pid != 0) {
+    if (pid != 0)
+    {
+      close(pipes[i][1]);
 
+      if (read(pipes[i][0], &resultBenchkCpu, sizeof(double)) == -1)
+      {
+        perror("read pipe child");
+        return 1;
+      }
+      if (read(pipes[i][0], &resultBenchkRam, sizeof(double)) == -1)
+      {
+        perror("read pipe child");
+        return 1;
+      }
     }
+
     else if (pid < 0)
     {
       perror("error fork");
@@ -70,6 +83,8 @@ int main(int argc, char *argv[])
   {
     printf("\n[Monitor] Child %d has finished. Capturing metrics...\n",
            finished_pid);
+    printf("Container %d - CPU time bin: %.2fms\n", finished_pid, resultBenchkCpu);
+    printf("Container %d - RAM usage bin: %.2fMB\n", finished_pid, resultBenchkRam);
 
     char stats_path[200];
     snprintf(stats_path, sizeof(stats_path),
@@ -105,6 +120,31 @@ int main(int argc, char *argv[])
       }
       fclose(f_cpu);
     }
+    char procPath[128], sysPath[128], devPath[128];
+    snprintf(procPath, sizeof(procPath), "/tmp/benchy/child-%d/proc",
+             finished_pid);
+
+    if (umount(procPath) == -1)
+    {
+      perror("Error al desmontar /proc");
+    }
+    snprintf(sysPath, sizeof(sysPath), "/tmp/benchy/child-%d/sys",
+             finished_pid);
+
+    if (umount(sysPath) == -1)
+    {
+      perror("Error al desmontar /sys");
+      return 1;
+    }
+
+    snprintf(devPath, sizeof(devPath), "/tmp/benchy/child-%d/dev",
+             finished_pid);
+
+    if (umount2(devPath, MNT_DETACH) == -1)
+    {
+      perror("Error al desmontar /dev");
+      return 1;
+    }
 
     char cmd_cg[150];
     snprintf(cmd_cg, sizeof(cmd_cg), "/sys/fs/cgroup/benchy/child-%d",
@@ -117,7 +157,7 @@ int main(int argc, char *argv[])
   time_wall =
       (tw2.tv_sec - tw1.tv_sec) * 1000.0 + (tw2.tv_nsec - tw1.tv_nsec) / 1e6;
 
-  printf("Wall time passed: %.2f ms\n", time_wall);
+  printf("\nWall time passed: %.2f ms\n", time_wall);
   for (int i = 0; i < num_arg; i++)
   {
     char cmd[128];
