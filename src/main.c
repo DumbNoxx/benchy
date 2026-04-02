@@ -53,6 +53,9 @@ int main(int argc, char *argv[])
       close(pipes[i][1]);
       return 0;
     }
+    if (pid != 0) {
+
+    }
     else if (pid < 0)
     {
       perror("error fork");
@@ -94,9 +97,9 @@ int main(int argc, char *argv[])
       {
         if (strncmp(line, "usage_usec", 10) == 0)
         {
-                      long long usec = atoll(line + 11); 
+          long long usec = atoll(line + 11);
           double ms = (double)usec / 1000.0;
-          printf("Container %d, CPU peak: %.2f ms\n", finished_pid, ms);
+          printf("Container %d, CPU Total peak: %.2f ms\n", finished_pid, ms);
         }
       }
       fclose(f_cpu);
@@ -110,10 +113,6 @@ int main(int argc, char *argv[])
   clock_gettime(CLOCK_MONOTONIC, &tw2);
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts2);
 
-  time_duration =
-      (ts2.tv_sec - ts1.tv_sec) * 1000.0 + (ts2.tv_nsec - ts1.tv_nsec) / 1e6;
-
-  printf("CPU time used (per clock_gettime()): %.2f ms\n", time_duration);
   time_wall =
       (tw2.tv_sec - tw1.tv_sec) * 1000.0 + (tw2.tv_nsec - tw1.tv_nsec) / 1e6;
 
