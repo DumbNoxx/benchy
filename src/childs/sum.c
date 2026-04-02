@@ -97,7 +97,6 @@ void childSum(int a, int b, int i, char *arg, int fd, const char *cgroup_dir,
   }
 
   unsigned long result = suma(a * i, b * a + i);
-  ;
 
   if (write(fd, &result, sizeof(int)) == -1)
   {
