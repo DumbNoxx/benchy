@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude
+CFLAGS = -Wall -Wextra -Iinclude -static
 SRC = $(shell find src -name "*.c")
 OBJ = $(SRC:.c=.o)
 BIN = benchy

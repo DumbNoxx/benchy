@@ -23,6 +23,7 @@
           pkgs.gdb
           pkgs.valgrind
           pkgs.clang-tools
+          pkgs.glibc.static
           pkgs.bear
         ];
         buildInputs = with pkgs; [ ];
