@@ -89,8 +89,8 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
     perror("mkdir devPath");
     exit(1);
   }
-  mount("/sys", sysPath, NULL, MS_BIND | MS_REC | MS_RDONLY, NULL);
-  mount("/dev", devPath, NULL, MS_BIND | MS_REC | MS_RDONLY, NULL);
+  mount("sysfs", sysPath, "sysfs", 0, NULL);
+  mount("tmpfs", devPath, "tmpfs", 0, "size=1M");
 
   if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
   {
@@ -173,8 +173,8 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
 
 int openBin(char *arg, char *file, char *foundPath)
 {
-  char path[512];
-  char command[20];
+  char path[512] = {0};
+  char command[512];
   snprintf(command, sizeof(command), "command -v %s", arg);
 
   FILE *fp = popen(command, "r");
@@ -186,17 +186,29 @@ int openBin(char *arg, char *file, char *foundPath)
 
   if (fgets(path, sizeof(path), fp) == NULL)
   {
-    fprintf(stderr, "Error: Binary '%s' not found in PATH\n", arg);
     pclose(fp);
-    return -1;
+    char commandFallback[1024];
+    snprintf(commandFallback, sizeof(commandFallback),
+             "sudo -u $SUDO_USER env PATH=\"$PATH\" which %s 2>/dev/null", arg);
+    FILE *fp2 = popen(commandFallback, "r");
+    if (fp2 == NULL || fgets(path, sizeof(path), fp2) == NULL)
+    {
+      if (fp2)
+        pclose(fp2);
+      fprintf(stderr, "Error: Binary '%s' not found in PATH\n", arg);
+      return -1;
+    }
+    pclose(fp2);
+  } else {
+      pclose(fp);
   }
 
   path[strcspn(path, "\n")] = 0;
   strcpy(foundPath, path);
 
   char libs[8192];
-  char commandLib[64];
-  snprintf(commandLib, sizeof(commandLib), "ldd $(%s) 2>&1", command);
+  char commandLib[1024];
+  snprintf(commandLib, sizeof(commandLib), "ldd %s 2>&1", path);
 
   FILE *fpLib = popen(commandLib, "r");
   if (fpLib == NULL)
@@ -214,12 +226,18 @@ int openBin(char *arg, char *file, char *foundPath)
   }
 
   pclose(fpLib);
-  pclose(fp);
 
-  printf("path to bin: '%s' is: [%s]\n", arg, path);
   if (strstr(libs, "not a dynamic executable") == NULL)
   {
-    printf("path to libs of bin '%s' is: [%s]\n", arg, libs);
+    char copyLibs[2048];
+        snprintf(copyLibs, sizeof(copyLibs), 
+             "echo '%s' | grep -o '/[a-zA-Z0-9._/-]*' | grep -v 'vdso' | xargs -I {} cp --parents -n {} %s/", 
+             libs, file);
+        if (system(copyLibs) == -1)
+        {
+            perror("error copy libs to container");
+            exit(1);
+        }
   }
   else if (strlen(libs) == 0)
   {

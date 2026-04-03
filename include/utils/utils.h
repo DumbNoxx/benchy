@@ -3,5 +3,6 @@
 
 int suma (int a, int b);
 int prepareTmp(const char *cgroup_dir);
+int safe_umount(const char *path);
 
 #endif
