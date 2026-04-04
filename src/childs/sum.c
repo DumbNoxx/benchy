@@ -75,9 +75,10 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
     exit(1);
   }
 
-  char sysPath[512], devPath[512];
+  char sysPath[512], devPath[512], procPath[512];
   snprintf(sysPath, sizeof(sysPath), "%s/sys", file);
   snprintf(devPath, sizeof(devPath), "%s/dev", file);
+  snprintf(procPath, sizeof(procPath), "%s/proc", file);
 
   if (mkdir(sysPath, 0555) == -1)
   {
@@ -89,10 +90,17 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
     perror("mkdir devPath");
     exit(1);
   }
+  if (mkdir(procPath, 0555) == -1)
+  {
+    perror("mkdir /proc");
+    exit(1);
+  }
+
   mount("sysfs", sysPath, "sysfs", 0, NULL);
   mount("tmpfs", devPath, "tmpfs", 0, "size=1M");
+  mount("proc", procPath, "proc", 0, NULL);
 
-  if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
+      if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
   {
     perror("unshare");
     exit(1);
@@ -125,16 +133,6 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
       dup2(memfd, STDOUT_FILENO);
       dup2(memfd, STDERR_FILENO);
       close(memfd);
-    }
-    if (mkdir("/proc", 0555) == -1)
-    {
-      perror("mkdir /proc");
-      exit(1);
-    }
-
-    if (mount("proc", "/proc", "proc", 0, NULL) == -1)
-    {
-      perror("mount proc aislado");
     }
 
     char *const args[] = {arg, NULL};
@@ -199,8 +197,10 @@ int openBin(char *arg, char *file, char *foundPath)
       return -1;
     }
     pclose(fp2);
-  } else {
-      pclose(fp);
+  }
+  else
+  {
+    pclose(fp);
   }
 
   path[strcspn(path, "\n")] = 0;
@@ -230,14 +230,15 @@ int openBin(char *arg, char *file, char *foundPath)
   if (strstr(libs, "not a dynamic executable") == NULL)
   {
     char copyLibs[2048];
-        snprintf(copyLibs, sizeof(copyLibs), 
-             "echo '%s' | grep -o '/[a-zA-Z0-9._/-]*' | grep -v 'vdso' | xargs -I {} cp --parents -n {} %s/", 
+    snprintf(copyLibs, sizeof(copyLibs),
+             "echo '%s' | grep -o '/[a-zA-Z0-9._/-]*' | grep -v 'vdso' | xargs "
+             "-I {} cp --parents -n {} %s/",
              libs, file);
-        if (system(copyLibs) == -1)
-        {
-            perror("error copy libs to container");
-            exit(1);
-        }
+    if (system(copyLibs) == -1)
+    {
+      perror("error copy libs to container");
+      exit(1);
+    }
   }
   else if (strlen(libs) == 0)
   {

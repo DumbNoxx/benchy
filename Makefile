@@ -17,5 +17,8 @@ $(BIN): $(OBJ)
 clean:
 	rm -rf $(BUILD_DIR) src/*.o 
 
+cas:
+	echo "build"
+
 .PHONY: all clean
 
