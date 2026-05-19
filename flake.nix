@@ -25,6 +25,7 @@
           pkgs.clang-tools
           pkgs.glibc.static
           pkgs.bear
+          pkgs.clang
         ];
         buildInputs = with pkgs; [ ];
       in

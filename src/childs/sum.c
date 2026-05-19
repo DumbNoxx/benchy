@@ -100,7 +100,7 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
   mount("tmpfs", devPath, "tmpfs", 0, "size=1M");
   mount("proc", procPath, "proc", 0, NULL);
 
-      if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
+  if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWPID) == -1)
   {
     perror("unshare");
     exit(1);
@@ -156,12 +156,12 @@ void childSum(char *arg, int fd, const char *cgroup_dir, char *ramLimit,
         (usage.ru_utime.tv_sec * 1000.0 + usage.ru_utime.tv_usec / 1000.0) +
         (usage.ru_stime.tv_sec * 1000.0 + usage.ru_stime.tv_usec / 1000.0);
 
-    if (write(fd, &h_duration, sizeof(double)) == -1)
+    if (write(fd, &h_duration, sizeof(h_duration)) == -1)
     {
       perror("error pipe h_duration");
       exit(1);
     }
-    if (write(fd, &maxRssMb, sizeof(double)) == -1)
+    if (write(fd, &maxRssMb, sizeof(maxRssMb)) == -1)
     {
       perror("error pipe maxRssMb");
       exit(1);
